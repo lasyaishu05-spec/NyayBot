@@ -10,12 +10,18 @@ const PROGRESS_INCREMENT = 2;
 export default function ProcessingLoader({ file, lang, onDone }) {
   const [step, setStep] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [isWakingUp, setIsWakingUp] = useState(false);
   const calledRef = useRef(false);
 
   const selectedLang = LANGUAGES.find((language) => language.code === lang);
   const languageName = selectedLang?.label || "English";
 
   useEffect(() => {
+    // Wake-up message timer (for Render cold starts)
+    const wakeUpTimer = setTimeout(() => {
+      setIsWakingUp(true);
+    }, 5000);
+
     if (calledRef.current) return;
     calledRef.current = true;
 
@@ -25,8 +31,15 @@ export default function ProcessingLoader({ file, lang, onDone }) {
       formData.append("language", languageName);
 
       const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+      const isLocalHost = API_BASE_URL.includes("localhost") || API_BASE_URL.includes("127.0.0.1");
+      const isProduction = window.location.hostname.includes("vercel.app");
 
       try {
+        // Validation: If live on Vercel but trying to reach Localhost
+        if (isProduction && isLocalHost) {
+          throw new Error("API_URL_NOT_CONFIGURED");
+        }
+
         const res = await fetch(`${API_BASE_URL}/process`, {
           method: "POST",
           body: formData,
@@ -37,21 +50,31 @@ export default function ProcessingLoader({ file, lang, onDone }) {
         }
 
         const data = await res.json();
+        clearTimeout(wakeUpTimer);
         setProgress(100);
         onDone(data);
       } catch (error) {
+        clearTimeout(wakeUpTimer);
         console.error("Error processing document:", error);
         setProgress(100);
-        onDone({
-          summary:
-            "Could not connect to the AI analysis server.",
-          content: `Error Details: ${error.message}\n\nPlease ensure the backend service is active and accessible at ${API_BASE_URL}.`,
-          actions: [
-            "Check if the backend service is running",
-            "Verify your internet connection",
-            "Ensure the API URL configuration is correct in the environment settings",
-          ],
-        });
+
+        if (error.message === "API_URL_NOT_CONFIGURED") {
+          onDone({
+            summary: "⚠️ Missing API Configuration",
+            content: `Your website is live, but it doesn't know where your AI backend is located.\n\n### How to Fix:\n1. Go to your **Vercel Settings** -> **Environment Variables**.\n2. Add a new variable called **VITE_API_URL**.\n3. Paste your **Render.com** link (e.g. https://...onrender.com) as the value.\n4. **Redeploy** the project.`,
+            actions: ["Add VITE_API_URL to Vercel", "Redeploy the project"],
+          });
+        } else {
+          onDone({
+            summary: "Could not connect to the AI analysis server.",
+            content: `Error Details: ${error.message}\n\nPlease ensure the backend service is active and accessible at ${API_BASE_URL}.`,
+            actions: [
+              "Check if your Render.com backend is 'Live'",
+              "Verify your internet connection",
+              "Ensure VITE_API_URL is correct in Vercel settings",
+            ],
+          });
+        }
       }
     };
 
@@ -129,6 +152,31 @@ export default function ProcessingLoader({ file, lang, onDone }) {
         >
           Our AI is working through the legal language...
         </p>
+
+        {isWakingUp && (
+          <div style={{
+            background: "#FFF7ED",
+            border: "1px solid #FFEDD5",
+            borderRadius: 12,
+            padding: "10px 16px",
+            marginBottom: 24,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            animation: "pulse 2s infinite",
+          }}>
+            <span style={{ fontSize: 18 }}>☕</span>
+            <span style={{
+              color: "#9A3412",
+              fontSize: 13,
+              fontWeight: 600,
+              fontFamily: "Georgia, serif",
+              textAlign: "left"
+            }}>
+              AI service is starting up (this takes ~30s on free plans)...
+            </span>
+          </div>
+        )}
 
         <div
           style={{
