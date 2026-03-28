@@ -111,8 +111,10 @@ export default function OutputDashboard({ file, lang, apiData, onReset }) {
     ]);
     setChatLoading(true);
 
+    const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+
     try {
-      const response = await fetch("http://127.0.0.1:8000/chat", {
+      const response = await fetch(`${API_BASE_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -138,7 +140,7 @@ export default function OutputDashboard({ file, lang, apiData, onReset }) {
         const updated = [...prev];
         for (let i = updated.length - 1; i >= 0; i--) {
           if (updated[i].loading) {
-            updated[i] = { role: "ai", text: "Sorry, I couldn't process your question right now. Please try again." };
+            updated[i] = { role: "ai", text: "Sorry, I couldn't reach the AI assistant right now. Please try again." };
             break;
           }
         }

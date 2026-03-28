@@ -24,8 +24,10 @@ export default function ProcessingLoader({ file, lang, onDone }) {
       formData.append("file", file);
       formData.append("language", languageName);
 
+      const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
       try {
-        const res = await fetch("http://localhost:8000/process", {
+        const res = await fetch(`${API_BASE_URL}/process`, {
           method: "POST",
           body: formData,
         });
@@ -42,12 +44,12 @@ export default function ProcessingLoader({ file, lang, onDone }) {
         setProgress(100);
         onDone({
           summary:
-            "Could not connect to the backend server. Make sure the backend is running on http://localhost:8000",
-          content: `Error Details: ${error.message}\n\nPlease ensure:\n1. The backend server is running (uvicorn app:app --reload)\n2. All Python dependencies are installed\n3. The API configuration is correct`,
+            "Could not connect to the AI analysis server.",
+          content: `Error Details: ${error.message}\n\nPlease ensure the backend service is active and accessible at ${API_BASE_URL}.`,
           actions: [
-            "Start the backend server with: cd backend && uvicorn app:app --reload",
-            "Install dependencies: pip install -r requirements.txt",
-            "Check the backend terminal for error messages",
+            "Check if the backend service is running",
+            "Verify your internet connection",
+            "Ensure the API URL configuration is correct in the environment settings",
           ],
         });
       }
