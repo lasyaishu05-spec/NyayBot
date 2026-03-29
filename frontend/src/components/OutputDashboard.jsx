@@ -28,9 +28,11 @@ export default function OutputDashboard({ file, lang, apiData, onReset }) {
 
   const selectedLang = LANGUAGES.find((language) => language.code === lang);
 
-  // Auto-scroll chat
+  // Auto-scroll chat (only if there is more than the initial message)
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (chatMessages.length > 1) {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [chatMessages]);
 
   // ─── DATA ───────────────────────────────────────────────────────────────
