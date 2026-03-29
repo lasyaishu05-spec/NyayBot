@@ -286,7 +286,7 @@ export default function OutputDashboard({ file, lang, apiData, onReset }) {
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {summaryBullets.map((bullet, i) => (
                     <p key={i} style={{
-                      fontSize: 14, lineHeight: 1.7, color: "#BFDBFE",
+                      fontSize: 16, lineHeight: 1.7, color: "#BFDBFE",
                       fontFamily: "Georgia, serif",
                       padding: "4px 0",
                     }}>{bullet}</p>
@@ -294,7 +294,7 @@ export default function OutputDashboard({ file, lang, apiData, onReset }) {
                 </div>
               ) : (
                 <p style={{
-                  fontSize: 15, lineHeight: 1.7, color: "#BFDBFE",
+                  fontSize: 17, lineHeight: 1.7, color: "#BFDBFE",
                   fontFamily: "Georgia, serif",
                 }}>{summary}</p>
               )}
@@ -351,7 +351,7 @@ export default function OutputDashboard({ file, lang, apiData, onReset }) {
         {/* Disclaimer */}
         {(highlights.dates.length > 0 || highlights.obligations.length > 0 || highlights.risks.length > 0) && (
           <p style={{
-            fontSize: 11, color: "#94A3B8", fontFamily: "Georgia, serif",
+            fontSize: 13, color: "#94A3B8", fontFamily: "Georgia, serif",
             textAlign: "center", marginBottom: 20, fontStyle: "italic",
           }}>
             ⚖️ This is an AI-generated analysis. It may not be 100% accurate. Always consult a qualified lawyer for legal decisions.
@@ -396,7 +396,7 @@ export default function OutputDashboard({ file, lang, apiData, onReset }) {
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 {contentParagraphs.map((paragraph, index) => (
                   <p key={`${index}-${paragraph.slice(0, 20)}`} style={{
-                    fontSize: 14, color: "#374151", fontFamily: "Georgia, serif",
+                    fontSize: 16, color: "#374151", fontFamily: "Georgia, serif",
                     lineHeight: 1.7, padding: "12px 16px", borderRadius: 10,
                     background: "#F8FAFC", border: "1px solid #F1F5F9",
                   }}>{paragraph}</p>
@@ -541,7 +541,7 @@ function HighlightCard({ title, items, bgColor, borderColor, iconBg, textColor, 
       }}>
         <h4 style={{
           fontFamily: "'Playfair Display', Georgia, serif",
-          fontWeight: 700, fontSize: 15, color: textColor,
+          fontWeight: 700, fontSize: 17, color: textColor,
         }}>{title}</h4>
         <span style={{
           background: badgeColor, color: "#fff", fontSize: 10,
@@ -555,7 +555,7 @@ function HighlightCard({ title, items, bgColor, borderColor, iconBg, textColor, 
             padding: "10px 14px", border: `1px solid ${borderColor}`,
           }}>
             <p style={{
-              fontSize: 13, color: textColor, fontFamily: "Georgia, serif",
+              fontSize: 15, color: textColor, fontFamily: "Georgia, serif",
               lineHeight: 1.5,
             }}>{item}</p>
           </div>
@@ -601,7 +601,7 @@ function ActionChecklistPanel({ actions }) {
       }}>
         <span>✅</span> What You Should Do
       </h3>
-      <p style={{ color: "#64748B", fontSize: 13, fontFamily: "Georgia, serif", marginBottom: 20 }}>
+      <p style={{ color: "#64748B", fontSize: 15, fontFamily: "Georgia, serif", marginBottom: 20 }}>
         {completedCount} of {items.length} steps completed
       </p>
 
@@ -639,7 +639,7 @@ function ActionChecklistPanel({ actions }) {
             </div>
             <div style={{ flex: 1 }}>
               <p style={{
-                fontSize: 13, fontFamily: "Georgia, serif", lineHeight: 1.5,
+                fontSize: 15, fontFamily: "Georgia, serif", lineHeight: 1.5,
                 color: action.done ? "#166534" : "#374151",
                 textDecoration: action.done ? "line-through" : "none",
               }}>{action.text}</p>
