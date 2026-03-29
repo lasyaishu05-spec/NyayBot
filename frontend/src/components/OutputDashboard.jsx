@@ -15,9 +15,24 @@ LANGUAGES.forEach((l) => { langCodeToName[l.code] = l.label; });
 // ─── MAIN COMPONENT ─────────────────────────────────────────────────────────
 
 export default function OutputDashboard({ file, lang, apiData, onReset }) {
-  const [chatMessages, setChatMessages] = useState([
-    { role: "ai", text: "Hi! I've analyzed your document. What would you like to know?" },
-  ]);
+  const [chatMessages, setChatMessages] = useState(() => {
+    const saved = localStorage.getItem("nyaybot_chat");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
+    return [{ role: "ai", text: "Hi! I've analyzed your document. What would you like to know?" }];
+  });
+
+  // Save chat history to local database
+  useEffect(() => {
+    if (chatMessages.length > 1) {
+      localStorage.setItem("nyaybot_chat", JSON.stringify(chatMessages));
+    }
+  }, [chatMessages]);
+
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [summaryMode, setSummaryMode] = useState("short");

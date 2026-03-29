@@ -12,10 +12,38 @@ import OutputDashboard from "./components/OutputDashboard";
 
 // Stage machine: landing → upload → preview → processing → output
 export default function App() {
-  const [stage, setStage] = useState("landing");
-  const [file, setFile] = useState(null);
-  const [lang, setLang] = useState("en");
-  const [apiData, setApiData] = useState(null);
+  const [stage, setStage] = useState(() => {
+    const saved = localStorage.getItem("nyaybot_session");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.stage === "output") return "output";
+      } catch (e) {}
+    }
+    return "landing";
+  });
+  
+  const [file, setFile] = useState(() => {
+    const saved = localStorage.getItem("nyaybot_session");
+    return saved ? JSON.parse(saved).file || null : null;
+  });
+  
+  const [lang, setLang] = useState(() => {
+    const saved = localStorage.getItem("nyaybot_session");
+    return saved ? JSON.parse(saved).lang || "en" : "en";
+  });
+  
+  const [apiData, setApiData] = useState(() => {
+    const saved = localStorage.getItem("nyaybot_session");
+    return saved ? JSON.parse(saved).apiData || null : null;
+  });
+
+  // Save session to local database
+  useEffect(() => {
+    if (stage === "output" && apiData) {
+      localStorage.setItem("nyaybot_session", JSON.stringify({ stage, file, lang, apiData }));
+    }
+  }, [stage, file, lang, apiData]);
   
   // Force scroll to top on every stage change
   useEffect(() => {
@@ -23,6 +51,8 @@ export default function App() {
   }, [stage]);
 
   const reset = useCallback(() => {
+    localStorage.removeItem("nyaybot_session");
+    localStorage.removeItem("nyaybot_chat");
     setStage("landing");
     setFile(null);
     setLang("en");
