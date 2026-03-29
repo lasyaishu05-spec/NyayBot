@@ -1,6 +1,6 @@
 // src/App.jsx
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import "./styles/global.css";
 
 import Navbar from "./components/Navbar";
@@ -16,6 +16,11 @@ export default function App() {
   const [file, setFile] = useState(null);
   const [lang, setLang] = useState("en");
   const [apiData, setApiData] = useState(null);
+  
+  // Force scroll to top on every stage change
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [stage]);
 
   const reset = useCallback(() => {
     setStage("landing");

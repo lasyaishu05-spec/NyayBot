@@ -23,17 +23,18 @@ export default function OutputDashboard({ file, lang, apiData, onReset }) {
   const [summaryMode, setSummaryMode] = useState("short");
   const [isListening, setIsListening] = useState(false);
   const [speakingId, setSpeakingId] = useState(null);
+  const [showChat, setShowChat] = useState(false);
   const chatEndRef = useRef(null);
   const recognitionRef = useRef(null);
 
   const selectedLang = LANGUAGES.find((language) => language.code === lang);
 
-  // Auto-scroll chat (only if there is more than the initial message)
+  // Auto-scroll chat (only if open AND there is more than the initial message)
   useEffect(() => {
-    if (chatMessages.length > 1) {
+    if (showChat && chatMessages.length > 1) {
       chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [chatMessages]);
+  }, [chatMessages, showChat]);
 
   // ─── DATA ───────────────────────────────────────────────────────────────
   const summary = summaryMode === "short"
@@ -387,140 +388,129 @@ export default function OutputDashboard({ file, lang, apiData, onReset }) {
                 ))}
               </div>
             </div>
-
-            {/* ── CHAT (Always Visible) ── */}
-            <div style={{
-              background: "#fff", borderRadius: 16, border: "1px solid #E2E8F0",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.04)", overflow: "hidden",
-              animation: "fadeSlideUp 0.7s ease",
-            }}>
-              <div style={{
-                padding: "16px 20px", borderBottom: "1px solid #F1F5F9",
-                background: "linear-gradient(135deg, #FAFBFF, #EFF6FF)",
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-              }}>
-                <h3 style={{
-                  fontFamily: "'Playfair Display', Georgia, serif",
-                  fontWeight: 700, fontSize: 17, color: "#0F172A",
-                  display: "flex", gap: 8, alignItems: "center",
-                }}>
-                  💬 Ask About Your Document
-                </h3>
-                <span style={{
-                  fontSize: 11, color: "#64748B", fontFamily: "Georgia, serif",
-                  background: "#F1F5F9", padding: "3px 10px", borderRadius: 100,
-                }}>Ask in any language</span>
-              </div>
-
-              <div style={{ padding: "16px 20px", maxHeight: 400, overflowY: "auto" }}>
-                {chatMessages.map((message, index) => (
-                  <div key={`${message.role}-${index}`} style={{
-                    display: "flex",
-                    justifyContent: message.role === "user" ? "flex-end" : "flex-start",
-                    marginBottom: 12,
-                  }}>
-                    {message.role === "ai" && (
-                      <div style={{
-                        width: 28, height: 28, borderRadius: "50%",
-                        background: "#EFF6FF", display: "flex",
-                        alignItems: "center", justifyContent: "center",
-                        fontSize: 12, fontWeight: 700, color: "#2563EB",
-                        flexShrink: 0, marginRight: 8, marginTop: 2,
-                      }}>AI</div>
-                    )}
-                    <div style={{ maxWidth: "75%", display: "flex", flexDirection: "column", gap: 4 }}>
-                      <div style={{
-                        padding: "10px 14px",
-                        borderRadius: message.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
-                        background: message.role === "user" ? "#2563EB" : "#F8FAFC",
-                        border: message.role === "ai" ? "1px solid #E2E8F0" : "none",
-                        fontSize: 14,
-                        color: message.role === "user" ? "#fff" : "#374151",
-                        fontFamily: "Georgia, serif", lineHeight: 1.5,
-                      }}>
-                        <span style={message.loading ? { animation: "pulse 1.2s ease-in-out infinite", display: "inline-block" } : {}}>
-                          {message.text}
-                        </span>
-                      </div>
-                      {/* Read aloud button for AI messages */}
-                      {message.role === "ai" && !message.loading && (
-                        <button onClick={() => speakText(message.text, `chat-${index}`)} style={{
-                          background: "none", border: "none", color: "#94A3B8",
-                          fontSize: 11, cursor: "pointer", padding: "2px 4px",
-                          fontFamily: "Georgia, serif", textAlign: "left",
-                          display: "flex", alignItems: "center", gap: 4,
-                          transition: "color 0.2s",
-                        }}
-                        onMouseEnter={(e) => e.target.style.color = "#2563EB"}
-                        onMouseLeave={(e) => e.target.style.color = "#94A3B8"}>
-                          {speakingId === `chat-${index}` ? "⏹ Stop" : "🔊 Listen"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                <div ref={chatEndRef} />
-              </div>
-
-              {/* Chat Input */}
-              <div style={{
-                padding: "12px 16px", borderTop: "1px solid #F1F5F9",
-                display: "flex", gap: 8, alignItems: "center",
-              }}>
-                <input
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && sendChat()}
-                  placeholder={chatLoading ? "Waiting for response..." : "Ask something about your document..."}
-                  disabled={chatLoading}
-                  style={{
-                    flex: 1, padding: "10px 14px", borderRadius: 10,
-                    border: "1px solid #E2E8F0", fontSize: 14,
-                    fontFamily: "Georgia, serif", outline: "none",
-                    color: "#374151", opacity: chatLoading ? 0.6 : 1,
-                  }}
-                />
-                {/* Voice Input Button */}
-                <button
-                  onClick={isListening ? stopListening : startListening}
-                  disabled={chatLoading}
-                  style={{
-                    width: 40, height: 40, borderRadius: 10,
-                    background: isListening ? "#FEE2E2" : "#F8FAFC",
-                    border: `1px solid ${isListening ? "#FCA5A5" : "#E2E8F0"}`,
-                    color: isListening ? "#DC2626" : "#64748B",
-                    cursor: chatLoading ? "not-allowed" : "pointer",
-                    fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center",
-                    transition: "all 0.2s", flexShrink: 0,
-                    animation: isListening ? "pulse 1s ease-in-out infinite" : "none",
-                  }}
-                  title={isListening ? "Stop recording" : "Voice input"}
-                >
-                  🎙️
-                </button>
-                {/* Send Button */}
-                <button
-                  onClick={sendChat}
-                  disabled={chatLoading}
-                  style={{
-                    padding: "10px 16px", borderRadius: 10,
-                    background: chatLoading ? "#93C5FD" : "#2563EB",
-                    color: "#fff", border: "none",
-                    cursor: chatLoading ? "not-allowed" : "pointer",
-                    fontSize: 14, fontWeight: 700, flexShrink: 0,
-                  }}
-                >{chatLoading ? "..." : "Send"}</button>
-              </div>
-            </div>
           </div>
 
           {actions.length > 0 && <ActionChecklistPanel actions={actions} />}
         </div>
       </div>
+
+      {/* ── FLOATING CHATBOT ── */}
+      <div style={{
+        position: "fixed", bottom: 30, right: 30, zIndex: 1000,
+        display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 16,
+      }}>
+        {/* Chat Drawer */}
+        {showChat && (
+          <div style={{
+            width: 380, height: 500, background: "#fff", borderRadius: 20,
+            boxShadow: "0 12px 48px rgba(0,0,0,0.15)", border: "1px solid #E2E8F0",
+            display: "flex", flexDirection: "column", overflow: "hidden",
+            animation: "fadeSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+          }}>
+            <div style={{
+              padding: "16px 20px", borderBottom: "1px solid #F1F5F9",
+              background: "linear-gradient(135deg, #2563EB, #1D4ED8)",
+              display: "flex", justifyContent: "space-between", alignItems: "center", color: "#fff",
+            }}>
+              <h3 style={{
+                fontFamily: "'Playfair Display', Georgia, serif",
+                fontWeight: 700, fontSize: 17, display: "flex", gap: 8, alignItems: "center",
+              }}>
+                💬 NyayBot Assistant
+              </h3>
+              <button onClick={() => setShowChat(false)} style={{
+                background: "rgba(255,255,255,0.2)", border: "none", color: "#fff",
+                width: 28, height: 28, borderRadius: "50%", cursor: "pointer",
+                fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center",
+              }}>×</button>
+            </div>
+
+            <div style={{ flex: 1, padding: "16px 20px", overflowY: "auto", background: "#F8FAFC" }}>
+              {chatMessages.map((message, index) => (
+                <div key={`${message.role}-${index}`} style={{
+                  display: "flex",
+                  justifyContent: message.role === "user" ? "flex-end" : "flex-start",
+                  marginBottom: 12,
+                }}>
+                  {message.role === "ai" && (
+                    <div style={{
+                      width: 28, height: 28, borderRadius: "50%",
+                      background: "#2563EB", display: "flex",
+                      alignItems: "center", justifyContent: "center",
+                      fontSize: 10, fontWeight: 700, color: "#fff",
+                      flexShrink: 0, marginRight: 8, marginTop: 2,
+                    }}>NB</div>
+                  )}
+                  <div style={{ maxWidth: "80%", display: "flex", flexDirection: "column", gap: 4 }}>
+                    <div style={{
+                      padding: "10px 14px",
+                      borderRadius: message.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+                      background: message.role === "user" ? "#2563EB" : "#fff",
+                      boxShadow: message.role === "ai" ? "0 2px 4px rgba(0,0,0,0.05)" : "none",
+                      fontSize: 13,
+                      color: message.role === "user" ? "#fff" : "#1E293B",
+                      fontFamily: "Georgia, serif", lineHeight: 1.5,
+                      border: message.role === "ai" ? "1px solid #E2E8F0" : "none",
+                    }}>
+                      {message.loading ? (
+                        <div style={{ display: "flex", gap: 3, padding: "4px 0" }}>
+                          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#94A3B8", animation: "pulse 1s infinite 0.1s" }} />
+                          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#94A3B8", animation: "pulse 1s infinite 0.2s" }} />
+                          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#94A3B8", animation: "pulse 1s infinite 0.3s" }} />
+                        </div>
+                      ) : message.text}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <div ref={chatEndRef} />
+            </div>
+
+            <div style={{ padding: "12px 16px", borderTop: "1px solid #F1F5F9", display: "flex", gap: 8, background: "#fff" }}>
+              <input
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && sendChat()}
+                placeholder="Ask something..."
+                disabled={chatLoading}
+                style={{
+                  flex: 1, padding: "10px 14px", borderRadius: 12,
+                  border: "1px solid #E2E8F0", fontSize: 13,
+                  fontFamily: "Georgia, serif", outline: "none",
+                }}
+              />
+              <button
+                onClick={sendChat}
+                disabled={chatLoading}
+                style={{
+                  width: 38, height: 38, borderRadius: 12,
+                  background: "#2563EB", color: "#fff", border: "none",
+                  cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+              >➤</button>
+            </div>
+          </div>
+        )}
+
+        {/* Floating Button */}
+        <button
+          onClick={() => setShowChat(!showChat)}
+          style={{
+            width: 60, height: 60, borderRadius: "50%",
+            background: "linear-gradient(135deg, #2563EB, #1D4ED8)",
+            color: "#fff", border: "none", cursor: "pointer",
+            boxShadow: "0 8px 32px rgba(37, 99, 235, 0.4)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 24, transition: "transform 0.3s ease",
+            transform: showChat ? "rotate(180deg)" : "rotate(0)",
+          }}
+        >
+          {showChat ? "×" : "💬"}
+        </button>
+      </div>
     </div>
   );
 }
-
 
 // ─── HIGHLIGHT CARD ─────────────────────────────────────────────────────────
 
