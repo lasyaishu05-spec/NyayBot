@@ -1,6 +1,11 @@
+import os
+import sys
+
+# Crucial fix for Vercel Python Builder relative imports
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
 from routes import process
 
 app = FastAPI(
