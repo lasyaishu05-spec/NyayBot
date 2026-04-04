@@ -42,6 +42,15 @@ export default function OutputDashboard({ file, lang, apiData, onReset }) {
   const chatEndRef = useRef(null);
   const recognitionRef = useRef(null);
 
+  // Pre-load voices for Speech Synthesis
+  useEffect(() => {
+    const loadVoices = () => { window.speechSynthesis.getVoices(); };
+    loadVoices();
+    if (window.speechSynthesis.onvoiceschanged !== undefined) {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+  }, []);
+
   const selectedLang = LANGUAGES.find((language) => language.code === lang);
 
   // Auto-scroll chat (only if open AND there is more than the initial message)
@@ -92,28 +101,135 @@ export default function OutputDashboard({ file, lang, apiData, onReset }) {
     setIsListening(false);
   };
 
+  const speakingIdRef = useRef(null);
+  const audioRef = useRef(null);
+
   // ─── VOICE OUTPUT (TTS) ────────────────────────────────────────────────
   const speakText = (text, id) => {
-    if (speakingId === id) {
+    if (speakingIdRef.current === id) {
       window.speechSynthesis.cancel();
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      speakingIdRef.current = null;
       setSpeakingId(null);
       return;
     }
+    
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = LANG_CODE_TO_SPEECH[lang] || "en-IN";
-    utterance.rate = 0.9;
-
-    const voices = window.speechSynthesis.getVoices();
-    const targetLang = LANG_CODE_TO_SPEECH[lang] || "en-IN";
-    const matchedVoice = voices.find((v) => v.lang === targetLang) ||
-                         voices.find((v) => v.lang.startsWith(targetLang.split("-")[0]));
-    if (matchedVoice) utterance.voice = matchedVoice;
-
-    utterance.onend = () => setSpeakingId(null);
-    utterance.onerror = () => setSpeakingId(null);
-    window.speechSynthesis.speak(utterance);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    speakingIdRef.current = id;
     setSpeakingId(id);
+
+    const targetLang = LANG_CODE_TO_SPEECH[lang] || "en-IN";
+    const baseLang = targetLang.split("-")[0];
+    const voices = window.speechSynthesis.getVoices();
+    
+    let matchedVoice = voices.find((v) => v.lang === targetLang || v.lang.replace('_', '-') === targetLang);
+    if (!matchedVoice) {
+      matchedVoice = voices.find((v) => v.lang.startsWith(baseLang));
+    }
+    if (!matchedVoice) {
+      matchedVoice = voices.find(v => v.lang.includes(baseLang) || v.name.toLowerCase().includes(baseLang));
+    }
+
+    // Split text into chunks, ensuring no chunk exceeds ~200 characters for API safety
+    let rawChunks = text.match(/[^.!?\n]+[.!?\n]*/g) || [text];
+    const chunks = [];
+    rawChunks.forEach(chunk => {
+      if (chunk.length <= 190) {
+        chunks.push(chunk);
+      } else {
+        const words = chunk.split(' ');
+        let temp = "";
+        words.forEach(w => {
+          if (temp.length + w.length + 1 > 180) {
+            chunks.push(temp);
+            temp = w + " ";
+          } else {
+            temp += w + " ";
+          }
+        });
+        if (temp.trim()) chunks.push(temp);
+      }
+    });
+
+    let currentChunk = 0;
+
+    // Use Web Speech API if native voice is found locally
+    if (matchedVoice) {
+      const speakNextChunk = () => {
+        if (speakingIdRef.current !== id) return;
+        if (currentChunk >= chunks.length) {
+          speakingIdRef.current = null;
+          setSpeakingId(null);
+          return;
+        }
+
+        const utterance = new SpeechSynthesisUtterance(chunks[currentChunk]);
+        utterance.lang = targetLang;
+        utterance.rate = 0.9;
+        utterance.voice = matchedVoice;
+
+        utterance.onend = () => {
+          currentChunk++;
+          speakNextChunk();
+        };
+
+        utterance.onerror = (e) => {
+          console.error("Speech Synthesis Error:", e);
+          currentChunk++; 
+          speakNextChunk(); // Keep pushing through errors to prevent lockup
+        };
+
+        window.speechSynthesis.speak(utterance);
+      };
+      speakNextChunk();
+    } else {
+      // NATIVE VOICE NOT FOUND: Fallback to reliable Google Translate Audio API
+      // This solves the issue for Windows machines lacking Indian voice packs!
+      const playNextAudioChunk = () => {
+        if (speakingIdRef.current !== id) return;
+        if (currentChunk >= chunks.length) {
+          speakingIdRef.current = null;
+          setSpeakingId(null);
+          return;
+        }
+
+        const textChunk = encodeURIComponent(chunks[currentChunk].trim());
+        if (!textChunk) {
+          currentChunk++;
+          playNextAudioChunk();
+          return;
+        }
+
+        const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${baseLang}&client=tw-ob&q=${textChunk}`;
+        const audio = new Audio(url);
+        audioRef.current = audio;
+
+        audio.onended = () => {
+          currentChunk++;
+          playNextAudioChunk();
+        };
+        
+        audio.onerror = () => {
+          console.error("Audio API Fallback Error");
+          currentChunk++;
+          playNextAudioChunk();
+        };
+
+        audio.play().catch(e => {
+          console.error("Audio play blocked/failed:", e);
+          currentChunk++;
+          playNextAudioChunk();
+        });
+      };
+      playNextAudioChunk();
+    }
   };
 
   // ─── CHAT ───────────────────────────────────────────────────────────────
