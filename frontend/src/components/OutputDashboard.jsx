@@ -245,16 +245,8 @@ export default function OutputDashboard({ file, lang, apiData, onReset }) {
     ]);
     setChatLoading(true);
 
-    const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
-    const isLocalHost = API_BASE_URL.includes("localhost") || API_BASE_URL.includes("127.0.0.1");
-    const isProduction = window.location.hostname.includes("vercel.app");
-
     try {
-      if (isProduction && isLocalHost) {
-        throw new Error("API_URL_NOT_CONFIGURED");
-      }
-
-      const response = await fetch(`${API_BASE_URL}/chat`, {
+      const response = await fetch(`/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -279,10 +271,6 @@ export default function OutputDashboard({ file, lang, apiData, onReset }) {
       setChatMessages((prev) => {
         const updated = [...prev];
         let errorMsg = "Sorry, I couldn't reach the AI assistant right now. Please try again.";
-        
-        if (error.message === "API_URL_NOT_CONFIGURED") {
-          errorMsg = "⚠️ Configuration Missing: Visit your Vercel Settings and add the VITE_API_URL variable (pointing to Render) to enable chat.";
-        }
 
         for (let i = updated.length - 1; i >= 0; i--) {
           if (updated[i].loading) {

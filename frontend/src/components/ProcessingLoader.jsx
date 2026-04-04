@@ -30,17 +30,8 @@ export default function ProcessingLoader({ file, lang, onDone }) {
       formData.append("file", file);
       formData.append("language", languageName);
 
-      const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
-      const isLocalHost = API_BASE_URL.includes("localhost") || API_BASE_URL.includes("127.0.0.1");
-      const isProduction = window.location.hostname.includes("vercel.app");
-
       try {
-        // Validation: If live on Vercel but trying to reach Localhost
-        if (isProduction && isLocalHost) {
-          throw new Error("API_URL_NOT_CONFIGURED");
-        }
-
-        const res = await fetch(`${API_BASE_URL}/process`, {
+        const res = await fetch(`/api/process`, {
           method: "POST",
           body: formData,
         });
@@ -58,23 +49,14 @@ export default function ProcessingLoader({ file, lang, onDone }) {
         console.error("Error processing document:", error);
         setProgress(100);
 
-        if (error.message === "API_URL_NOT_CONFIGURED") {
-          onDone({
-            summary: "⚠️ Missing API Configuration",
-            content: `Your website is live, but it doesn't know where your AI backend is located.\n\n### How to Fix:\n1. Go to your **Vercel Settings** -> **Environment Variables**.\n2. Add a new variable called **VITE_API_URL**.\n3. Paste your **Render.com** link (e.g. https://...onrender.com) as the value.\n4. **Redeploy** the project.`,
-            actions: ["Add VITE_API_URL to Vercel", "Redeploy the project"],
-          });
-        } else {
-          onDone({
-            summary: "Could not connect to the AI analysis server.",
-            content: `Error Details: ${error.message}\n\nPlease ensure the backend service is active and accessible at ${API_BASE_URL}.`,
-            actions: [
-              "Check if your Render.com backend is 'Live'",
-              "Verify your internet connection",
-              "Ensure VITE_API_URL is correct in Vercel settings",
-            ],
-          });
-        }
+        onDone({
+          summary: "Could not connect to the AI analysis server.",
+          content: `Error Details: ${error.message}\n\nPlease ensure you have correctly added GROQ_API_KEY to your Vercel Environment variables!`,
+          actions: [
+            "Verify your internet connection",
+            "Ensure GROQ_API_KEY is correct in Vercel settings",
+          ],
+        });
       }
     };
 

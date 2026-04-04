@@ -44,7 +44,7 @@ export default function App() {
       localStorage.setItem("nyaybot_session", JSON.stringify({ stage, file, lang, apiData }));
     }
   }, [stage, file, lang, apiData]);
-  
+
   // Force scroll to top on every stage change
   useEffect(() => {
     window.scrollTo(0, 0);
