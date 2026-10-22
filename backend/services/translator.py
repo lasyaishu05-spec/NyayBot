@@ -23,47 +23,38 @@ def translate_text(text, language):
         return text
 
     # If target is English, no translation needed
-    if language.lower() == "english":
+    if language.lower() in ["english", "en"]:
         return text
 
-    target_code = LANG_MAP.get(language, None)
+    target_code = LANG_MAP.get(language, LANG_MAP.get(language.capitalize(), LANG_MAP.get(language.lower(), None)))
+    if not target_code and len(language) == 2:
+        target_code = language.lower()
 
     # If language not found in map or is English, return original
     if target_code is None or target_code == "en":
         return text
 
+    # Try GoogleTranslator first
     try:
-        # deep-translator has a 5000 char limit per request, so chunk if needed
         if len(text) <= 4500:
             translated = GoogleTranslator(source="auto", target=target_code).translate(text)
-            return translated or text
-        else:
-            # Split into smaller chunks for translation
-            chunks = []
-            sentences = text.split(". ")
-            current_chunk = ""
+            if translated:
+                return translated
+    except Exception as e:
+        pass
 
-            for sentence in sentences:
-                if len(current_chunk) + len(sentence) + 2 < 4500:
-                    current_chunk += sentence + ". "
-                else:
-                    if current_chunk.strip():
-                        chunks.append(current_chunk.strip())
-                    current_chunk = sentence + ". "
-
-            if current_chunk.strip():
-                chunks.append(current_chunk.strip())
-
-            translated_chunks = []
-            for chunk in chunks:
-                translated = GoogleTranslator(source="auto", target=target_code).translate(chunk)
-                if translated:
-                    translated_chunks.append(translated)
-                else:
-                    translated_chunks.append(chunk)
-
-            return " ".join(translated_chunks)
-
+    # Try GTX endpoint fallback
+    try:
+        import urllib.request
+        import urllib.parse
+        import json
+        url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl={target_code}&dt=t&q=" + urllib.parse.quote(text[:3000])
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        with urllib.request.urlopen(req, timeout=5.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if data and data[0]:
+                return "".join([part[0] for part in data[0] if part[0]])
     except Exception as e:
         print(f"Translation error for language '{language}' (code: {target_code}): {e}")
-        return text  # Return original text on failure, not an error message
+
+    return text

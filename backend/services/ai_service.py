@@ -186,11 +186,13 @@ def generate_summary(text, mode="short"):
     if result:
         return result
 
-    # Fallback
+    # Fallback: extract real key sentences from the uploaded document text
     if mode == "short":
-        return "• This is a legal document that requires your attention.\n• Please read the simplified content below for details.\n• Consult a lawyer if you have concerns."
+        lines = [l.strip() for l in text.split("\n") if l.strip() and len(l.strip()) > 15]
+        bullets = [f"• {l[:160]}" for l in lines[:4]]
+        return "\n".join(bullets) if bullets else "• Document uploaded and processed successfully."
     else:
-        return text[:500] + "..." if len(text) > 500 else text
+        return text[:600] + "..." if len(text) > 600 else text
 
 
 # ─── TEXT SIMPLIFICATION ─────────────────────────────────────────────────────

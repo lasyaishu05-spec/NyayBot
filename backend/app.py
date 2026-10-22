@@ -17,6 +17,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(process.router, prefix="/api")
 app.include_router(process.router)
 
 
