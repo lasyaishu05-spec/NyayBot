@@ -647,51 +647,49 @@ def chat_with_document(question, document_content, history=None):
         if not _init_groq():
             return _basic_chat_fallback(question, document_content)
 
-    # Use RAG pipeline to retrieve relevant clauses and citations
+    # Use RAG pipeline to retrieve top relevant clauses
     from services.rag_service import rag_pipeline
 
-    if len(document_content) > 3000:
-        doc_context, retrieved_chunks = rag_pipeline.build_augmented_context(
+    # For documents up to 40k chars (~8k words), provide BOTH top retrieved clauses AND full document context
+    # This prevents the AI from missing any details or giving incomplete answers.
+    if len(document_content) <= 40000:
+        augmented_clauses, _ = rag_pipeline.build_augmented_context(
             document_text=document_content,
             query=question,
-            top_k=5,
+            top_k=6,
         )
-        context_header = "=== RELEVANT DOCUMENT CLAUSES (RETRIEVED VIA RAG) ==="
+        doc_context = (
+            f"=== MOST RELEVANT RETRIEVED CLAUSES (START HERE) ===\n{augmented_clauses}\n\n"
+            f"=== FULL DOCUMENT CONTENT (FOR COMPLETE CONTEXT) ===\n{document_content}\n"
+            f"=== END CONTEXT ==="
+        )
     else:
-        doc_context = document_content
-        context_header = "=== DOCUMENT CONTENT ==="
+        augmented_clauses, _ = rag_pipeline.build_augmented_context(
+            document_text=document_content,
+            query=question,
+            top_k=10,
+        )
+        doc_context = f"=== RELEVANT DOCUMENT CLAUSES ===\n{augmented_clauses}\n=== END CONTEXT ==="
+
+    system_content = (
+        "You are NyayBot, an expert legal document assistant for Indian citizens. "
+        "Your task is to answer the user's question with 100% accuracy, thoroughness, and completeness based on the provided document.\n\n"
+        "MANDATORY INSTRUCTIONS FOR ACCURACY AND COMPLETENESS:\n"
+        "1. Give a comprehensive, fully finished answer. DO NOT be overly brief, vague, or give one-line answers.\n"
+        "2. Include EVERY specific detail, monetary amount (Rs. / INR), due date, percentage, notice timeline, and obligation mentioned in the document for this topic.\n"
+        "3. Structure your response with clear, organized bullet points and bold headings so it is effortless to read.\n"
+        "4. Always cite the exact clause numbers or section titles from the document (e.g., [Clause 2], [Clause 3]).\n"
+        "5. If there are multiple parts (e.g., monthly rent, maintenance fees, electricity/water dues, security deposit), list and explain EACH one distinctly.\n"
+        "6. If the document does not mention a specific detail, explicitly state that it is not specified in this document.\n"
+        "7. Keep language crystal-clear and plain, avoiding unnecessary legalese.\n\n"
+        "LANGUAGE RULE: Detect the language of the user's question and ALWAYS reply in that SAME language (Hindi, Telugu, Tamil, Kannada, Bengali, Marathi, Gujarati, Malayalam, Punjabi, Urdu, Odia, English, etc.). Match the user's language exactly.\n\n"
+        f"{doc_context}"
+    )
 
     messages = [
         {
             "role": "system",
-            "content": (
-                "You are NyayBot, a helpful legal document assistant for Indian citizens. "
-                "You have been given context retrieved from a legal document uploaded by the user. "
-                "Answer the user's questions about the document in simple, clear language. "
-                "Be specific and refer to details from the document. "
-                "Whenever stating any specific term, rule, amount, deadline, or obligation, "
-                "cite the relevant source clause/section (e.g., [Clause 2 / Section 3]). "
-                "If the document doesn't contain information to answer the question, say so honestly. "
-                "Keep answers concise but thorough. Do NOT provide formal legal advice — "
-                "instead suggest consulting a lawyer for complex legal decisions.\n\n"
-                "VERY IMPORTANT LANGUAGE RULE: You MUST detect the language of the user's question "
-                "and ALWAYS reply in that SAME language. For example:\n"
-                "- If user asks in Hindi, reply entirely in Hindi.\n"
-                "- If user asks in Telugu, reply entirely in Telugu.\n"
-                "- If user asks in Tamil, reply entirely in Tamil.\n"
-                "- If user asks in Kannada, reply entirely in Kannada.\n"
-                "- If user asks in Bengali, reply entirely in Bengali.\n"
-                "- If user asks in Marathi, reply entirely in Marathi.\n"
-                "- If user asks in Gujarati, reply entirely in Gujarati.\n"
-                "- If user asks in Malayalam, reply entirely in Malayalam.\n"
-                "- If user asks in Punjabi, reply entirely in Punjabi.\n"
-                "- If user asks in Urdu, reply entirely in Urdu.\n"
-                "- If user asks in Odia, reply entirely in Odia.\n"
-                "- If user asks in English, reply in English.\n"
-                "- For any other language, reply in that same language.\n"
-                "Never mix languages in your response. Match the user's language exactly.\n\n"
-                f"{context_header}\n{doc_context}\n=== END CONTEXT ==="
-            )
+            "content": system_content
         }
     ]
 
@@ -708,8 +706,8 @@ def chat_with_document(question, document_content, history=None):
         response = _groq_client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=messages,
-            temperature=0.4,
-            max_tokens=1024,
+            temperature=0.2,
+            max_tokens=2048,
         )
         return response.choices[0].message.content
 
@@ -732,23 +730,21 @@ def _basic_chat_fallback(question, document_content=""):
             matched_chunks = rag_pipeline.index_and_retrieve(
                 document_text=document_content,
                 query=question,
-                top_k=3,
+                top_k=5,
             )
             # Filter chunks with score > 0 or top chunks
             valid_chunks = [ch for ch in matched_chunks if ch.get("score", 0) > 0]
             if not valid_chunks and matched_chunks:
-                valid_chunks = matched_chunks[:2]
+                valid_chunks = matched_chunks[:3]
 
             if valid_chunks:
                 response_lines = [
-                    f"Here is what your document states regarding **\"{question}\"**:\n"
+                    f"Based on your document, here are the complete clauses regarding **\"{question}\"**:\n"
                 ]
                 for ch in valid_chunks:
-                    title = ch.get("title", "Relevant Clause").strip()
                     text = ch.get("text", "").strip()
-                    if len(text) > 280:
-                        text = text[:275] + "..."
-                    response_lines.append(f"• **{title}**:\n  {text}\n")
+                    if text:
+                        response_lines.append(f"• {text}\n")
 
                 return "\n".join(response_lines).strip()
         except Exception as e:

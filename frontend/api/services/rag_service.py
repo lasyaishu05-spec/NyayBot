@@ -26,22 +26,22 @@ class LegalChunker:
         if not text or not text.strip():
             return []
 
-        # Try splitting by common legal headers or numbered sections first
-        raw_sections = re.split(r'\n(?=(?:[0-9]{1,2}[\.\)]|[A-Z\s]{4,}:|Clause\s+\d+|Section\s+\d+|Article\s+\d+))', text)
-        
+        # Split by newlines, double-newlines, or inline numbered clauses / legal headers
+        split_pattern = r'(?:\n{2,}|\n(?=[0-9]{1,2}[\.\)]|[A-Z\s]{4,}:|Clause\s+\d+|Section\s+\d+|Article\s+\d+)|(?<=[;\.\n])\s+(?=[0-9]{1,2}[\.\)]\s+|Clause\s+\d+|Section\s+\d+|WHEREAS\b|NOW THIS DEED|IN WITNESS WHEREOF))'
+        raw_sections = [s.strip() for s in re.split(split_pattern, text) if s.strip()]
+
+        if not raw_sections:
+            raw_sections = [text.strip()]
+
         chunks = []
         chunk_id = 1
 
         for sec in raw_sections:
-            sec = sec.strip()
-            if not sec:
-                continue
-
             words = sec.split()
-            if len(words) <= target_word_size:
-                # Small enough to be a standalone chunk
-                title_match = re.match(r'^([^\n]{3,60})', sec)
-                title = title_match.group(1).strip() if title_match else f"Clause {chunk_id}"
+            title_match = re.match(r'^([^\n\.;]{3,65})', sec)
+            title = title_match.group(1).strip() if title_match else f"Clause {chunk_id}"
+
+            if len(words) <= target_word_size + 50:
                 chunks.append({
                     "id": chunk_id,
                     "title": title,
@@ -49,13 +49,28 @@ class LegalChunker:
                 })
                 chunk_id += 1
             else:
-                # Split large section into overlapping sub-chunks
-                step = target_word_size - overlap
-                for i in range(0, len(words), max(step, 1)):
-                    sub_words = words[i:i + target_word_size]
-                    sub_text = " ".join(sub_words)
-                    title_match = re.match(r'^([^\n]{3,60})', sub_text)
-                    title = title_match.group(1).strip() if title_match else f"Clause {chunk_id}"
+                # Split along sentence boundaries instead of arbitrary word breaks
+                sentences = re.split(r'(?<=[.!?])\s+', sec)
+                curr_sub = []
+                curr_len = 0
+                for s in sentences:
+                    s_words = len(s.split())
+                    if curr_len + s_words > target_word_size and curr_sub:
+                        sub_text = " ".join(curr_sub)
+                        chunks.append({
+                            "id": chunk_id,
+                            "title": title,
+                            "text": sub_text
+                        })
+                        chunk_id += 1
+                        curr_sub = [s]
+                        curr_len = s_words
+                    else:
+                        curr_sub.append(s)
+                        curr_len += s_words
+
+                if curr_sub:
+                    sub_text = " ".join(curr_sub)
                     chunks.append({
                         "id": chunk_id,
                         "title": title,
