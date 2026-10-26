@@ -674,12 +674,22 @@ function HighlightCard({ title, items, bgColor, borderColor, iconBg, textColor, 
 
 function ActionChecklistPanel({ actions }) {
   const [items, setItems] = useState(
-    actions.map((action) => ({
+    (actions || []).map((action) => ({
       text: typeof action === "string" ? action : action.text || action,
       done: false,
       deadline: typeof action === "object" ? action.deadline : null,
     }))
   );
+
+  useEffect(() => {
+    setItems(
+      (actions || []).map((action) => ({
+        text: typeof action === "string" ? action : action.text || action,
+        done: false,
+        deadline: typeof action === "object" ? action.deadline : null,
+      }))
+    );
+  }, [actions]);
 
   const toggle = (index) => {
     setItems((prev) =>

@@ -1,4 +1,5 @@
 import os
+import re
 import json
 from dotenv import load_dotenv
 
@@ -148,7 +149,195 @@ def analyze_highlights(text):
         except (json.JSONDecodeError, Exception) as e:
             print(f"[NyayBot] Highlights parse error: {e}, raw: {result}")
 
-    return {"dates": [], "obligations": [], "risks": []}
+    # Fallback: extract highlights via regex from the document
+    return _extract_regex_highlights(text)
+
+
+def _extract_regex_highlights(text):
+    """Regex fallback to extract dates, obligations, and risks when AI is unavailable."""
+    if not text:
+        return {"dates": [], "obligations": [], "risks": []}
+
+    dates = []
+    # Dates & Deadlines patterns
+    date_patterns = [
+        r'(?:due\s+(?:on|by)|payable\s+(?:on|by)|on\s+or\s+before|valid\s+until|expires?\s+on|within\s+\d+\s+(?:days|months)|prior\s+written\s+notice\s+of\s+\d+\s+days)[^\n\.\;]{3,50}',
+        r'\b\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s,]+\d{2,4}\b',
+        r'\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b',
+    ]
+    for pat in date_patterns:
+        for match in re.finditer(pat, text, re.IGNORECASE):
+            clean = match.group(0).strip()
+            if clean not in dates and len(clean) > 4:
+                dates.append(clean)
+            if len(dates) >= 5:
+                break
+        if len(dates) >= 5:
+            break
+
+    # Obligations patterns (shall, must, agreed to)
+    obligations = []
+    ob_patterns = [
+        r'(?:tenant|landlord|borrower|lender|employee|employer|party|purchaser)\s+(?:shall|agrees?\s+to|must|undertakes?\s+to)\s+[^\n\.\;]{10,80}',
+    ]
+    for pat in ob_patterns:
+        for match in re.finditer(pat, text, re.IGNORECASE):
+            clean = match.group(0).strip()
+            if clean not in obligations:
+                obligations.append(clean)
+            if len(obligations) >= 4:
+                break
+
+    # Risks patterns (penalty, default, breach, forfeit)
+    risks = []
+    risk_patterns = [
+        r'(?:penalty|interest|default|breach|forfeit|liquidated\s+damages|evict|termination)[^\n\.\;]{10,80}',
+    ]
+    for pat in risk_patterns:
+        for match in re.finditer(pat, text, re.IGNORECASE):
+            clean = match.group(0).strip()
+            if clean not in risks:
+                risks.append(clean)
+            if len(risks) >= 4:
+                break
+
+    return {
+        "dates": dates[:5],
+        "obligations": obligations[:5],
+        "risks": risks[:5],
+    }
+
+
+# ─── ACTION ITEMS GENERATION ("WHAT YOU SHOULD DO") ──────────────────────────
+
+def generate_action_items(text, highlights=None, doc_type="Legal Document"):
+    """
+    Generate tailored, document-grounded action items for "What You Should Do".
+    Extracts dates, deadlines, payments, and key obligations from the document.
+    Returns a list of dicts: [{"text": str, "deadline": Optional[str]}].
+    """
+    snippet = text[:4000] if text else ""
+    dates_context = json.dumps(highlights.get("dates", [])) if highlights else "[]"
+    obligations_context = json.dumps(highlights.get("obligations", [])) if highlights else "[]"
+    risks_context = json.dumps(highlights.get("risks", [])) if highlights else "[]"
+
+    system_prompt = (
+        "You are a legal assistant for Indian citizens. "
+        "Extract actionable steps for the 'What You Should Do' checklist from this legal document. "
+        "Focus on critical deadlines, dates, payments, renewals, notices, and compliance obligations. "
+        "Respond with ONLY a JSON array of objects (no markdown, no extra text), like:\n"
+        '[\n'
+        '  {"text": "Pay monthly rent of Rs. 25,000 to the landlord", "deadline": "5th of every month"},\n'
+        '  {"text": "Serve written termination notice if planning to vacate", "deadline": "30 days prior"},\n'
+        '  {"text": "Inspect premises and report minor damages", "deadline": "Within 7 days of move-in"},\n'
+        '  {"text": "Ensure full security deposit refund upon lease end", "deadline": "31 March 2025"},\n'
+        '  {"text": "Keep a signed and stamped copy of this agreement", "deadline": null}\n'
+        ']\n\n'
+        "Rules:\n"
+        "- Generate between 4 and 6 concrete, practical steps\n"
+        "- 'deadline' MUST contain the specific date, day, month, notice period, or timeline if found in the document, or null if none\n"
+        "- Each 'text' must start with an active imperative verb (Pay, Submit, Verify, Notify, Keep, File, Check)\n"
+        "- Do NOT use vague generic steps if specific details exist in the document"
+    )
+
+    user_prompt = (
+        f"Document Type: {doc_type}\n"
+        f"Extracted Dates: {dates_context}\n"
+        f"Extracted Obligations: {obligations_context}\n"
+        f"Extracted Risks: {risks_context}\n\n"
+        f"Document Content Snippet:\n{snippet}"
+    )
+
+    result = _groq_call(system_prompt, user_prompt, temperature=0.2, max_tokens=600)
+
+    if result:
+        try:
+            cleaned = result.strip()
+            if cleaned.startswith("```"):
+                cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, list) and len(parsed) > 0:
+                normalized = []
+                for item in parsed[:6]:
+                    if isinstance(item, dict) and "text" in item:
+                        normalized.append({
+                            "text": str(item["text"]).strip(),
+                            "deadline": str(item["deadline"]).strip() if item.get("deadline") else None
+                        })
+                    elif isinstance(item, str):
+                        normalized.append({"text": item.strip(), "deadline": None})
+                if normalized:
+                    return normalized
+        except Exception as e:
+            print(f"[NyayBot] Action items parse error: {e}, raw: {result}")
+
+    # Fallback: Build action items from extracted highlights and regex
+    return _build_fallback_actions(text, highlights, doc_type)
+
+
+def _build_fallback_actions(text, highlights=None, doc_type="Legal Document"):
+    """Dynamically build action items from extracted dates, obligations, and text patterns."""
+    actions = []
+    seen_texts = set()
+
+    # 1. Dates / Deadlines from highlights
+    if highlights and highlights.get("dates"):
+        for date_item in highlights["dates"][:3]:
+            # Look for explicit timing phrases or date expressions
+            timing_match = re.search(
+                r'(?:due\s+(?:by|on)|on\s+or\s+before|before|by|within|until|expires?\s+on)\s+([^\,\.]+)',
+                date_item,
+                re.IGNORECASE
+            )
+            date_match = re.search(
+                r'\b\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s,]+\d{2,4}\b|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b',
+                date_item,
+                re.IGNORECASE
+            )
+            deadline = timing_match.group(0).strip() if timing_match else (date_match.group(0).strip() if date_match else None)
+            clean_text = f"Keep track of key deadline: {date_item}"
+            if clean_text not in seen_texts:
+                actions.append({"text": clean_text, "deadline": deadline})
+                seen_texts.add(clean_text)
+
+    # 2. Obligations from highlights
+    if highlights and highlights.get("obligations"):
+        for ob in highlights["obligations"][:3]:
+            clean_text = f"Ensure compliance with obligation: {ob}"
+            if clean_text not in seen_texts:
+                deadline_match = re.search(r'(?:by|before|on|within)\s+([^\,\.]+)', ob, re.IGNORECASE)
+                deadline = deadline_match.group(0).strip() if deadline_match else None
+                actions.append({"text": clean_text, "deadline": deadline})
+                seen_texts.add(clean_text)
+
+    # 3. Direct regex search for dates/deadlines in text if none found yet
+    if not actions and text:
+        date_matches = re.findall(
+            r'(?:(?:pay|due|terminated?|renewed?|expires?|effective)\s+(?:on|by|before|within)\s+[^\n\.\;]{3,40})',
+            text,
+            re.IGNORECASE
+        )
+        for dm in date_matches[:3]:
+            clean_text = f"Comply with timeline: {dm.strip()}"
+            if clean_text not in seen_texts:
+                actions.append({"text": clean_text, "deadline": "As per document"})
+                seen_texts.add(clean_text)
+
+    # 4. Standard legal due-diligence steps for this document type to reach 4-6 items
+    defaults = [
+        {"text": f"Verify all personal details, names, and addresses in this {doc_type}", "deadline": None},
+        {"text": f"Keep a signed copy of the original {doc_type} safely stored", "deadline": None},
+        {"text": "Consult a legal expert if any penalty, liability, or clause seems unfair", "deadline": None},
+    ]
+
+    for d in defaults:
+        if len(actions) >= 5:
+            break
+        if d["text"] not in seen_texts:
+            actions.append(d)
+            seen_texts.add(d["text"])
+
+    return actions
 
 
 # ─── SUMMARY GENERATION ─────────────────────────────────────────────────────
@@ -186,11 +375,13 @@ def generate_summary(text, mode="short"):
     if result:
         return result
 
-    # Fallback
+    # Fallback: extract real key sentences from the uploaded document text
     if mode == "short":
-        return "• This is a legal document that requires your attention.\n• Please read the simplified content below for details.\n• Consult a lawyer if you have concerns."
+        lines = [l.strip() for l in text.split("\n") if l.strip() and len(l.strip()) > 15]
+        bullets = [f"• {l[:160]}" for l in lines[:4]]
+        return "\n".join(bullets) if bullets else "• Document uploaded and processed successfully."
     else:
-        return text[:500] + "..." if len(text) > 500 else text
+        return text[:600] + "..." if len(text) > 600 else text
 
 
 # ─── TEXT SIMPLIFICATION ─────────────────────────────────────────────────────

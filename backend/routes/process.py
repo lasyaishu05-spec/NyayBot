@@ -9,6 +9,7 @@ from services.ai_service import (
     detect_document_type,
     analyze_highlights,
     generate_summary,
+    generate_action_items,
 )
 from services.translator import translate_text
 
@@ -67,9 +68,9 @@ async def process_document(
                 "document_type": {"type": "Unknown", "confidence": "low"},
                 "highlights": {"dates": [], "obligations": [], "risks": []},
                 "actions": [
-                    "Try uploading a text-based PDF (not scanned)",
-                    "Ensure the document is clear and readable",
-                    "Try a different file format (PDF, JPG, PNG)"
+                    {"text": "Try uploading a text-based PDF (not scanned)", "deadline": None},
+                    {"text": "Ensure the document is clear and readable", "deadline": None},
+                    {"text": "Try a different file format (PDF, JPG, PNG)", "deadline": None}
                 ]
             }
 
@@ -83,9 +84,9 @@ async def process_document(
                 "document_type": {"type": "Unknown", "confidence": "low"},
                 "highlights": {"dates": [], "obligations": [], "risks": []},
                 "actions": [
-                    "Try uploading a text-based PDF (not scanned)",
-                    "Ensure the document is clear and readable",
-                    "Try a different file format"
+                    {"text": "Try uploading a text-based PDF (not scanned)", "deadline": None},
+                    {"text": "Ensure the document is clear and readable", "deadline": None},
+                    {"text": "Try a different file format", "deadline": None}
                 ]
             }
 
@@ -133,8 +134,13 @@ async def process_document(
             detailed_summary_translated = detailed_summary
             translated_highlights = highlights
 
-        # 9. Generate action items (and translate if needed)
-        actions = _generate_actions(language)
+        # 9. Generate document-grounded action items with extracted dates and deadlines
+        actions = _generate_actions(
+            text=text,
+            highlights=highlights,
+            document_type=document_type.get("type", "Legal Document"),
+            language=language
+        )
 
         return {
             "summary": short_summary_translated,
@@ -156,25 +162,19 @@ async def process_document(
         )
 
 
-def _generate_actions(language):
-    """Generate action items for the user, translated if needed."""
-    actions = [
-        "Read through the simplified document carefully",
-        "Note down any dates, deadlines, or amounts mentioned",
-        "Consult a lawyer if any clause seems unfair or unclear",
-        "Keep a signed copy of the original document",
-        "Set reminders for important deadlines mentioned",
-        "Verify all personal details are correct in the document"
-    ]
+def _generate_actions(text, highlights, document_type, language):
+    """Generate document-grounded action items with extracted dates, translated if needed."""
+    raw_actions = generate_action_items(text, highlights=highlights, doc_type=document_type)
 
     if language.lower() != "english":
         translated_actions = []
-        for action in actions:
+        for item in raw_actions:
             try:
-                translated = translate_text(action, language)
-                translated_actions.append(translated)
+                t_text = translate_text(item["text"], language)
+                t_deadline = translate_text(item["deadline"], language) if item.get("deadline") else None
+                translated_actions.append({"text": t_text, "deadline": t_deadline})
             except Exception:
-                translated_actions.append(action)
+                translated_actions.append(item)
         return translated_actions
 
-    return actions
+    return raw_actions
