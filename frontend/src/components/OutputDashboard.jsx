@@ -35,7 +35,6 @@ export default function OutputDashboard({ file, lang, apiData, onReset }) {
 
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
-  const [summaryMode, setSummaryMode] = useState("short");
   const [isListening, setIsListening] = useState(false);
   const [speakingId, setSpeakingId] = useState(null);
   const [showChat, setShowChat] = useState(false);
@@ -61,15 +60,12 @@ export default function OutputDashboard({ file, lang, apiData, onReset }) {
   }, [chatMessages, showChat]);
 
   // ─── DATA ───────────────────────────────────────────────────────────────
-  const summary = summaryMode === "short"
-    ? (apiData?.short_summary || apiData?.summary || "No summary available.")
-    : (apiData?.detailed_summary || apiData?.summary || "No summary available.");
+  const summary = apiData?.detailed_summary || apiData?.summary || "No summary available.";
   const content = apiData?.content || "No content available.";
   const actions = apiData?.actions || [];
   const docType = apiData?.document_type || { type: "Legal Document", confidence: "medium" };
   const highlights = apiData?.highlights || { dates: [], obligations: [], risks: [] };
   const contentParagraphs = content.split("\n\n").filter((p) => p.trim());
-  const summaryBullets = summary.split("\n").filter((l) => l.trim());
 
   // ─── VOICE INPUT ────────────────────────────────────────────────────────
   const startListening = () => {
@@ -347,27 +343,15 @@ export default function OutputDashboard({ file, lang, apiData, onReset }) {
           borderRadius: 20, padding: "24px 28px", marginBottom: 24, color: "#fff",
           boxShadow: "0 4px 24px rgba(37,99,235,0.25)", animation: "fadeSlideUp 0.5s ease",
         }}>
-          {/* Summary Toggle + Read Aloud */}
+          {/* Header + Read Aloud */}
           <div style={{
             display: "flex", justifyContent: "space-between", alignItems: "center",
             marginBottom: 14, flexWrap: "wrap", gap: 10,
           }}>
-            <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.15)", borderRadius: 10, padding: 3 }}>
-              <button onClick={() => setSummaryMode("short")} style={{
-                padding: "6px 16px", borderRadius: 8, border: "none", cursor: "pointer",
-                fontSize: 12, fontWeight: 700, fontFamily: "Georgia, serif",
-                background: summaryMode === "short" ? "#fff" : "transparent",
-                color: summaryMode === "short" ? "#1D4ED8" : "rgba(255,255,255,0.8)",
-                transition: "all 0.2s",
-              }}>Short Summary</button>
-              <button onClick={() => setSummaryMode("detailed")} style={{
-                padding: "6px 16px", borderRadius: 8, border: "none", cursor: "pointer",
-                fontSize: 12, fontWeight: 700, fontFamily: "Georgia, serif",
-                background: summaryMode === "detailed" ? "#fff" : "transparent",
-                color: summaryMode === "detailed" ? "#1D4ED8" : "rgba(255,255,255,0.8)",
-                transition: "all 0.2s",
-              }}>Detailed Summary</button>
-            </div>
+            <p style={{
+              fontFamily: "'Playfair Display', Georgia, serif",
+              fontWeight: 700, fontSize: 18, margin: 0,
+            }}>Document Summary</p>
 
             <button onClick={() => speakText(summary, "summary")} style={{
               background: speakingId === "summary" ? "#EF4444" : "rgba(255,255,255,0.2)",
@@ -383,25 +367,9 @@ export default function OutputDashboard({ file, lang, apiData, onReset }) {
           <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
             <div style={{ flex: 1 }}>
               <p style={{
-                fontFamily: "'Playfair Display', Georgia, serif",
-                fontWeight: 700, fontSize: 18, marginBottom: 10,
-              }}>Document Summary</p>
-              {summaryMode === "short" ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {summaryBullets.map((bullet, i) => (
-                    <p key={i} style={{
-                      fontSize: 16, lineHeight: 1.7, color: "#BFDBFE",
-                      fontFamily: "Georgia, serif",
-                      padding: "4px 0",
-                    }}>{bullet}</p>
-                  ))}
-                </div>
-              ) : (
-                <p style={{
-                  fontSize: 17, lineHeight: 1.7, color: "#BFDBFE",
-                  fontFamily: "Georgia, serif",
-                }}>{summary}</p>
-              )}
+                fontSize: 17, lineHeight: 1.7, color: "#BFDBFE",
+                fontFamily: "Georgia, serif", margin: 0,
+              }}>{summary}</p>
             </div>
           </div>
         </div>

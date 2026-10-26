@@ -62,7 +62,6 @@ async def process_document(
         if not text or not text.strip():
             return {
                 "summary": "Could not extract any text from the document.",
-                "short_summary": "• Could not extract text from this document.",
                 "detailed_summary": "Could not extract any text from the document.",
                 "content": "No readable text found in the uploaded file. Please try a different file.",
                 "document_type": {"type": "Unknown", "confidence": "low"},
@@ -78,7 +77,6 @@ async def process_document(
         if text.startswith("["):
             return {
                 "summary": text,
-                "short_summary": f"• {text}",
                 "detailed_summary": text,
                 "content": text,
                 "document_type": {"type": "Unknown", "confidence": "low"},
@@ -100,9 +98,8 @@ async def process_document(
               f"{len(highlights.get('obligations', []))} obligations, "
               f"{len(highlights.get('risks', []))} risks")
 
-        # 4. Generate both short and detailed summaries
-        short_summary = generate_summary(text, mode="short")
-        detailed_summary = generate_summary(text, mode="detailed")
+        # 4. Generate comprehensive document summary
+        summary = generate_summary(text, mode="detailed")
 
         # 5. Chunk the text into manageable pieces
         chunks = chunk_text(text)
@@ -119,8 +116,7 @@ async def process_document(
         # 8. Translate if not English
         if language.lower() != "english":
             translated = translate_text(simplified_text, language)
-            short_summary_translated = translate_text(short_summary, language)
-            detailed_summary_translated = translate_text(detailed_summary, language)
+            summary_translated = translate_text(summary, language)
 
             # Translate highlights
             translated_highlights = {
@@ -130,8 +126,7 @@ async def process_document(
             }
         else:
             translated = simplified_text
-            short_summary_translated = short_summary
-            detailed_summary_translated = detailed_summary
+            summary_translated = summary
             translated_highlights = highlights
 
         # 9. Generate document-grounded action items with extracted dates and deadlines
@@ -143,9 +138,8 @@ async def process_document(
         )
 
         return {
-            "summary": short_summary_translated,
-            "short_summary": short_summary_translated,
-            "detailed_summary": detailed_summary_translated,
+            "summary": summary_translated,
+            "detailed_summary": summary_translated,
             "content": translated,
             "document_type": document_type,
             "highlights": translated_highlights,

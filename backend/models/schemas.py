@@ -24,8 +24,8 @@ class ActionItemSchema(BaseModel):
 
 class ProcessResponseSchema(BaseModel):
     summary: str
-    short_summary: str
-    detailed_summary: str
+    detailed_summary: Optional[str] = None
+    short_summary: Optional[str] = None
     content: str
     document_type: DocumentTypeSchema
     highlights: HighlightsSchema
