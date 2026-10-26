@@ -66,6 +66,13 @@ class LegalChunker:
         return chunks
 
 
+def _stem_word(w: str) -> str:
+    for suffix in ('ments', 'ment', 'ings', 'ing', 'able', 'ed', 'es', 's'):
+        if w.endswith(suffix) and len(w) - len(suffix) >= 3:
+            return w[:-len(suffix)]
+    return w
+
+
 class BM25Retriever:
     """
     Lightweight BM25 Okapi retriever for exact keyword and number matching.
@@ -82,8 +89,9 @@ class BM25Retriever:
 
     @staticmethod
     def tokenize(text: str) -> List[str]:
-        # Lowercase and split on non-alphanumeric (preserves numbers and words)
-        return re.findall(r'\b[a-zA-Z0-9_₹]+\b', text.lower())
+        # Lowercase, stem, and split on non-alphanumeric (preserves numbers and words)
+        tokens = re.findall(r'\b[a-zA-Z0-9_₹]+\b', text.lower())
+        return [_stem_word(t) for t in tokens]
 
     def fit(self, documents: List[str]):
         self.corpus = [self.tokenize(doc) for doc in documents]
@@ -145,7 +153,8 @@ class TFIDFVectorRetriever:
 
     @staticmethod
     def tokenize(text: str) -> List[str]:
-        return re.findall(r'\b[a-zA-Z0-9_]+\b', text.lower())
+        tokens = re.findall(r'\b[a-zA-Z0-9_]+\b', text.lower())
+        return [_stem_word(t) for t in tokens]
 
     def fit(self, documents: List[str]):
         tokenized_docs = [self.tokenize(doc) for doc in documents]

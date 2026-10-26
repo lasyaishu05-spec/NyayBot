@@ -639,12 +639,13 @@ def _basic_simplify(text):
 def chat_with_document(question, document_content, history=None):
     """
     Answer a user's question about the document using Groq AI.
-    Falls back to a helpful message if AI is not available.
+    Falls back to intelligent local Hybrid RAG document retrieval if AI key is not configured.
     """
     global _groq_available, _groq_client
 
     if not _groq_available or _groq_client is None:
-        return _basic_chat_fallback(question)
+        if not _init_groq():
+            return _basic_chat_fallback(question, document_content)
 
     # Use RAG pipeline to retrieve relevant clauses and citations
     from services.rag_service import rag_pipeline
@@ -717,11 +718,42 @@ def chat_with_document(question, document_content, history=None):
         print(f"[NyayBot] Groq chat API error: {error_msg}")
         if "401" in error_msg or "invalid_api_key" in error_msg.lower():
             _groq_available = False
-        return _basic_chat_fallback(question)
+        return _basic_chat_fallback(question, document_content)
 
 
-def _basic_chat_fallback(question):
-    """Fallback response when AI is not available."""
+def _basic_chat_fallback(question, document_content=""):
+    """
+    Intelligent document-grounded fallback response when external LLM is not active.
+    Uses local Hybrid RAG (BM25 + TF-IDF) to search the document text for the user's question.
+    """
+    if document_content and document_content.strip():
+        try:
+            from services.rag_service import rag_pipeline
+            matched_chunks = rag_pipeline.index_and_retrieve(
+                document_text=document_content,
+                query=question,
+                top_k=3,
+            )
+            # Filter chunks with score > 0 or top chunks
+            valid_chunks = [ch for ch in matched_chunks if ch.get("score", 0) > 0]
+            if not valid_chunks and matched_chunks:
+                valid_chunks = matched_chunks[:2]
+
+            if valid_chunks:
+                response_lines = [
+                    f"Here is what your document states regarding **\"{question}\"**:\n"
+                ]
+                for ch in valid_chunks:
+                    title = ch.get("title", "Relevant Clause").strip()
+                    text = ch.get("text", "").strip()
+                    if len(text) > 280:
+                        text = text[:275] + "..."
+                    response_lines.append(f"• **{title}**:\n  {text}\n")
+
+                return "\n".join(response_lines).strip()
+        except Exception as e:
+            print(f"[NyayBot] RAG chat fallback error: {e}")
+
     return (
         "I'm sorry, the AI service is currently unavailable. "
         "Please review the simplified document above for your answer, "
