@@ -365,11 +365,13 @@ export default function OutputDashboard({ file, lang, apiData, onReset }) {
           </div>
 
           <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-            <div style={{ flex: 1 }}>
-              <p style={{
-                fontSize: 17, lineHeight: 1.7, color: "#BFDBFE",
-                fontFamily: "Georgia, serif", margin: 0,
-              }}>{summary}</p>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
+              {summary.split("\n\n").filter(p => p.trim()).map((para, idx) => (
+                <p key={idx} style={{
+                  fontSize: 16, lineHeight: 1.75, color: "#DBEAFE",
+                  fontFamily: "Georgia, serif", margin: 0,
+                }}>{para}</p>
+              ))}
             </div>
           </div>
         </div>
