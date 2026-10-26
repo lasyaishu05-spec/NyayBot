@@ -234,19 +234,32 @@ def chat_with_document(question, document_content, history=None):
     if not _groq_available or _groq_client is None:
         return _basic_chat_fallback(question)
 
-    # Truncate document content if too long
-    doc_context = document_content[:6000] if len(document_content) > 6000 else document_content
+    # Use RAG pipeline to retrieve relevant clauses and citations
+    from services.rag_service import rag_pipeline
+
+    if len(document_content) > 3000:
+        doc_context, retrieved_chunks = rag_pipeline.build_augmented_context(
+            document_text=document_content,
+            query=question,
+            top_k=5,
+        )
+        context_header = "=== RELEVANT DOCUMENT CLAUSES (RETRIEVED VIA RAG) ==="
+    else:
+        doc_context = document_content
+        context_header = "=== DOCUMENT CONTENT ==="
 
     messages = [
         {
             "role": "system",
             "content": (
                 "You are NyayBot, a helpful legal document assistant for Indian citizens. "
-                "You have been given a legal document that was uploaded by the user. "
+                "You have been given context retrieved from a legal document uploaded by the user. "
                 "Answer the user's questions about the document in simple, clear language. "
-                "Be specific and refer to details from the document when possible. "
+                "Be specific and refer to details from the document. "
+                "Whenever stating any specific term, rule, amount, deadline, or obligation, "
+                "cite the relevant source clause/section (e.g., [Clause 2 / Section 3]). "
                 "If the document doesn't contain information to answer the question, say so honestly. "
-                "Keep answers concise but thorough. Do NOT provide legal advice — "
+                "Keep answers concise but thorough. Do NOT provide formal legal advice — "
                 "instead suggest consulting a lawyer for complex legal decisions.\n\n"
                 "VERY IMPORTANT LANGUAGE RULE: You MUST detect the language of the user's question "
                 "and ALWAYS reply in that SAME language. For example:\n"
@@ -264,7 +277,7 @@ def chat_with_document(question, document_content, history=None):
                 "- If user asks in English, reply in English.\n"
                 "- For any other language, reply in that same language.\n"
                 "Never mix languages in your response. Match the user's language exactly.\n\n"
-                f"=== DOCUMENT CONTENT ===\n{doc_context}\n=== END DOCUMENT ==="
+                f"{context_header}\n{doc_context}\n=== END CONTEXT ==="
             )
         }
     ]
