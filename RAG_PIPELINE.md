@@ -70,6 +70,25 @@ augmented_context, chunks = rag_pipeline.build_augmented_context(
 
 ---
 
+## 📋 Grounded Action Checklist & Date Extraction Pipeline
+
+Beyond question answering, NyayBot automatically generates the **"What You Should Do"** checklist directly from real clauses in the uploaded document:
+
+```mermaid
+flowchart LR
+    Doc[📄 Uploaded Document] --> Scan{Clause Scanner}
+    Scan -->|Dates & Timelines| Dates[📅 Due Dates / Notice Periods]
+    Scan -->|Amounts & Fees| Money[💰 Rent, Deposit, Penalties]
+    Scan -->|Obligations| Duty[⚖️ Duties & Compliance]
+    Dates & Money & Duty --> ActionList[✅ Grounded Action Items]
+```
+
+1. **Specific Date & Deadline Parsing:** Scans clauses for exact calendar dates (`01-10-2024 to 31-08-2025`), recurring payment schedules (`on or before 5th of every month`), notice periods (`30 days prior written notice`), and statutory timelines (`within 15 days`).
+2. **Financial Obligation Detection:** Extracts security deposits, rent figures, maintenance charges, and delay penalties directly associated with relevant obligations.
+3. **Active Action Generation:** Presents items as clean, actionable tasks (e.g., *"Pay monthly rent of Rs. 25,000 on or before the 5th"*, badge: `Due: 5th of every month`).
+
+---
+
 ## ⚖️ Naive Truncation vs. NyayBot RAG
 
 | Feature | Old Naive Approach | NyayBot Simple RAG |
@@ -78,4 +97,5 @@ augmented_context, chunks = rag_pipeline.build_augmented_context(
 | **Finds Specific Numbers** | Frequently missed if past page 2 | 100% precision with BM25 keyword search |
 | **Semantic Understanding** | Weak on truncated sections | Hybrid matching finds meaning across entire file |
 | **Citations** | None | Exact chunk / clause citations provided |
+| **Action Checklist** | Static generic templates | 100% dynamically extracted from document dates & clauses |
 | **Speed & Setup** | Fast | Millisecond fast, pure Python, zero heavy setup |

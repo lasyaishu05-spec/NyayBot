@@ -159,52 +159,59 @@ def _extract_regex_highlights(text):
         return {"dates": [], "obligations": [], "risks": []}
 
     dates = []
-    # Dates & Deadlines patterns
+    # Dates & Deadlines patterns (statutory, contract dates, deadlines, notice periods)
     date_patterns = [
-        r'(?:due\s+(?:on|by)|payable\s+(?:on|by)|on\s+or\s+before|valid\s+until|expires?\s+on|within\s+\d+\s+(?:days|months)|prior\s+written\s+notice\s+of\s+\d+\s+days)[^\n\.\;]{3,50}',
-        r'\b\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s,]+\d{2,4}\b',
-        r'\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b',
+        r'(?:(?:due|payable|commencing|terminated?|renewed?|expires?|effective|valid)\s+(?:on|by|before|within|from)|on\s+or\s+before|valid\s+(?:up\s+to|until)|expires?\s+on|period\s+of|within\s+\d+\s+(?:days|months|weeks|years)|(?:prior\s+)?written\s+notice\s+of\s+\d+\s+(?:days|months)|\b\d+\s+(?:days?|months?)\s+(?:prior\s+)?(?:written\s+)?notice)[^\n\.\;]{0,50}',
+        r'\b\d{1,2}(?:st|nd|rd|th)?\s+of\s+(?:every|each)\s+[^\n\.\;]{3,35}',
+        r'\b\d{1,2}(?:st|nd|rd|th)?\s+(?:day\s+of\s+)?(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)[a-z]*[\s,]+\d{2,4}\b',
+        r'\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}(?:\s*(?:to|-)\s*\d{1,2}[/-]\d{1,2}[/-]\d{2,4})?\b',
     ]
     for pat in date_patterns:
         for match in re.finditer(pat, text, re.IGNORECASE):
             clean = match.group(0).strip()
-            if clean not in dates and len(clean) > 4:
+            clean = re.sub(r'^[0-9]+[\.\)\-]\s*', '', clean).strip()
+            if clean and clean not in dates and len(clean) >= 4:
                 dates.append(clean)
-            if len(dates) >= 5:
+            if len(dates) >= 6:
                 break
-        if len(dates) >= 5:
+        if len(dates) >= 6:
             break
 
-    # Obligations patterns (shall, must, agreed to)
+    # Obligations patterns (shall, must, agreed to, payable, undertakes)
     obligations = []
-    ob_patterns = [
-        r'(?:tenant|landlord|borrower|lender|employee|employer|party|purchaser)\s+(?:shall|agrees?\s+to|must|undertakes?\s+to)\s+[^\n\.\;]{10,80}',
-    ]
-    for pat in ob_patterns:
-        for match in re.finditer(pat, text, re.IGNORECASE):
-            clean = match.group(0).strip()
-            if clean not in obligations:
-                obligations.append(clean)
-            if len(obligations) >= 4:
+    sentences = re.split(r'[\r\n]+|(?<=[.!?])\s+(?=[A-Z0-9])', text)
+    ob_verb_regex = re.compile(
+        r'\b(shall|must|agrees?\s+to|undertakes?\s+to|required\s+to|responsible\s+for|payable|refund(?:ed)?|deposit|liable)\b',
+        re.IGNORECASE
+    )
+    for sent in sentences:
+        s_clean = re.sub(r'^(?:[0-9]+[\.\)\-]|[A-Za-z][\.\)]|[\u2022\-\*])\s*', '', sent).strip()
+        if len(s_clean) >= 15 and ob_verb_regex.search(s_clean):
+            snippet = s_clean if len(s_clean) <= 130 else s_clean[:127] + '...'
+            if snippet not in obligations:
+                obligations.append(snippet)
+            if len(obligations) >= 6:
                 break
 
-    # Risks patterns (penalty, default, breach, forfeit)
+    # Risks patterns (penalty, default, breach, forfeit, interest, evict, termination)
     risks = []
-    risk_patterns = [
-        r'(?:penalty|interest|default|breach|forfeit|liquidated\s+damages|evict|termination)[^\n\.\;]{10,80}',
-    ]
-    for pat in risk_patterns:
-        for match in re.finditer(pat, text, re.IGNORECASE):
-            clean = match.group(0).strip()
-            if clean not in risks:
-                risks.append(clean)
-            if len(risks) >= 4:
+    risk_verb_regex = re.compile(
+        r'\b(penalty|default|breach|forfeit|liquidated\s+damages|evict(?:ion)?|termination|interest\s+of|late\s+(?:fee|penalty)|liabilit(?:y|ies))\b',
+        re.IGNORECASE
+    )
+    for sent in sentences:
+        s_clean = re.sub(r'^(?:[0-9]+[\.\)\-]|[A-Za-z][\.\)]|[\u2022\-\*])\s*', '', sent).strip()
+        if len(s_clean) >= 15 and risk_verb_regex.search(s_clean):
+            snippet = s_clean if len(s_clean) <= 130 else s_clean[:127] + '...'
+            if snippet not in risks:
+                risks.append(snippet)
+            if len(risks) >= 6:
                 break
 
     return {
-        "dates": dates[:5],
-        "obligations": obligations[:5],
-        "risks": risks[:5],
+        "dates": dates[:6],
+        "obligations": obligations[:6],
+        "risks": risks[:6],
     }
 
 
@@ -276,66 +283,96 @@ def generate_action_items(text, highlights=None, doc_type="Legal Document"):
 
 
 def _build_fallback_actions(text, highlights=None, doc_type="Legal Document"):
-    """Dynamically build action items from extracted dates, obligations, and text patterns."""
+    """
+    Dynamically extract actionable steps directly from document text.
+    Pulls concrete clauses with dates, payments (Rs/INR), obligations, and deadlines.
+    """
     actions = []
     seen_texts = set()
 
-    # 1. Dates / Deadlines from highlights
-    if highlights and highlights.get("dates"):
-        for date_item in highlights["dates"][:3]:
-            # Look for explicit timing phrases or date expressions
-            timing_match = re.search(
-                r'(?:due\s+(?:by|on)|on\s+or\s+before|before|by|within|until|expires?\s+on)\s+([^\,\.]+)',
-                date_item,
-                re.IGNORECASE
-            )
-            date_match = re.search(
-                r'\b\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s,]+\d{2,4}\b|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b',
-                date_item,
-                re.IGNORECASE
-            )
-            deadline = timing_match.group(0).strip() if timing_match else (date_match.group(0).strip() if date_match else None)
-            clean_text = f"Keep track of key deadline: {date_item}"
-            if clean_text not in seen_texts:
-                actions.append({"text": clean_text, "deadline": deadline})
-                seen_texts.add(clean_text)
+    if not text:
+        return [
+            {"text": f"Verify all personal details, names, and addresses in this {doc_type}", "deadline": None},
+            {"text": f"Keep a signed copy of the original {doc_type} safely stored", "deadline": None},
+            {"text": "Consult a legal expert if any penalty, liability, or clause seems unfair", "deadline": None},
+        ]
 
-    # 2. Obligations from highlights
-    if highlights and highlights.get("obligations"):
-        for ob in highlights["obligations"][:3]:
-            clean_text = f"Ensure compliance with obligation: {ob}"
-            if clean_text not in seen_texts:
-                deadline_match = re.search(r'(?:by|before|on|within)\s+([^\,\.]+)', ob, re.IGNORECASE)
-                deadline = deadline_match.group(0).strip() if deadline_match else None
-                actions.append({"text": clean_text, "deadline": deadline})
-                seen_texts.add(clean_text)
+    # Split document into clauses / sentences
+    raw_clauses = re.split(r'[\r\n]+|(?<=[.!?])\s+(?=[A-Z0-9])', text)
+    clean_clauses = []
+    for rc in raw_clauses:
+        c = re.sub(r'^(?:[0-9]+[\.\)\-]|[A-Za-z][\.\)]|[\u2022\-\*])\s*', '', rc).strip()
+        if len(c) >= 15:
+            clean_clauses.append(c)
 
-    # 3. Direct regex search for dates/deadlines in text if none found yet
-    if not actions and text:
-        date_matches = re.findall(
-            r'(?:(?:pay|due|terminated?|renewed?|expires?|effective)\s+(?:on|by|before|within)\s+[^\n\.\;]{3,40})',
-            text,
-            re.IGNORECASE
-        )
-        for dm in date_matches[:3]:
-            clean_text = f"Comply with timeline: {dm.strip()}"
-            if clean_text not in seen_texts:
-                actions.append({"text": clean_text, "deadline": "As per document"})
-                seen_texts.add(clean_text)
+    # Regex for dates, notice periods, and payment deadlines
+    date_regex = re.compile(
+        r'(?:(?:on\s+or\s+before|due\s+by|by\s+the|commencing\s+from|valid\s+(?:up\s+to|until)|expires?\s+on|period\s+of|within)\s+[^\,\;\n]{3,40}'
+        r'|\b\d{1,2}(?:st|nd|rd|th)?\s+of\s+(?:every|each)\s+[^\,\;\n]{3,25}'
+        r'|\b\d{1,2}(?:st|nd|rd|th)?\s+(?:day\s+of\s+)?(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)[a-z]*[\s,]+\d{2,4}\b'
+        r'|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}(?:\s*(?:to|-)\s*\d{1,2}[/-]\d{1,2}[/-]\d{2,4})?'
+        r'|\b\d+\s+(?:days?|months?|weeks?|years?)\s+(?:prior\s+)?(?:written\s+)?notice\b)',
+        re.IGNORECASE
+    )
 
-    # 4. Standard legal due-diligence steps for this document type to reach 4-6 items
+    money_regex = re.compile(r'(?:Rs\.?|INR|\u20b9)\s*[\d,]+(?:\s*/-)?(?:\s*\([^\)]+\))?', re.IGNORECASE)
+
+    obligation_regex = re.compile(
+        r'\b(shall|must|agrees?\s+to|undertakes?\s+to|required\s+to|payable|paid|refund(?:ed)?|terminate|notice|deposit|due|delay|penalty|liable)\b',
+        re.IGNORECASE
+    )
+
+    # 1. First priority: Clauses with both obligations and explicit dates/deadlines or monetary amounts
+    for clause in clean_clauses:
+        has_ob = obligation_regex.search(clause)
+        has_date = date_regex.search(clause)
+        has_money = money_regex.search(clause)
+
+        if has_ob and (has_date or has_money):
+            deadline = has_date.group(0).strip() if has_date else (has_money.group(0).strip() if has_money else None)
+            snippet = clause if len(clause) <= 125 else clause[:122] + "..."
+            key = snippet.lower()
+            if key not in seen_texts:
+                actions.append({"text": snippet, "deadline": deadline})
+                seen_texts.add(key)
+        if len(actions) >= 5:
+            break
+
+    # 2. Second priority: Key obligation clauses from text
+    if len(actions) < 4:
+        for clause in clean_clauses:
+            if obligation_regex.search(clause):
+                snippet = clause if len(clause) <= 125 else clause[:122] + "..."
+                key = snippet.lower()
+                if key not in seen_texts:
+                    has_date = date_regex.search(clause)
+                    deadline = has_date.group(0).strip() if has_date else None
+                    actions.append({"text": snippet, "deadline": deadline})
+                    seen_texts.add(key)
+            if len(actions) >= 5:
+                break
+
+    # 3. Third priority: Highlights passed in (dates or obligations)
+    if len(actions) < 4 and highlights:
+        for d in highlights.get("dates", []):
+            if d.lower() not in seen_texts:
+                actions.append({"text": f"Review key timeline: {d}", "deadline": d})
+                seen_texts.add(d.lower())
+            if len(actions) >= 5:
+                break
+
+    # 4. Only if document yielded fewer than 3 items, pad with context-aware steps
     defaults = [
         {"text": f"Verify all personal details, names, and addresses in this {doc_type}", "deadline": None},
         {"text": f"Keep a signed copy of the original {doc_type} safely stored", "deadline": None},
         {"text": "Consult a legal expert if any penalty, liability, or clause seems unfair", "deadline": None},
     ]
-
     for d in defaults:
-        if len(actions) >= 5:
+        if len(actions) >= 4:
             break
-        if d["text"] not in seen_texts:
+        if d["text"].lower() not in seen_texts:
             actions.append(d)
-            seen_texts.add(d["text"])
+            seen_texts.add(d["text"].lower())
 
     return actions
 
