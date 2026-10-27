@@ -722,37 +722,81 @@ def chat_with_document(question, document_content, history=None):
 def _basic_chat_fallback(question, document_content=""):
     """
     Intelligent document-grounded fallback response when external LLM is not active.
-    Uses local Hybrid RAG (BM25 + TF-IDF) to search the document text for the user's question.
+    Uses local Hybrid RAG (BM25 + TF-IDF) to search the document text for the user's question,
+    with smart intent detection and clear absence notifications.
     """
-    if document_content and document_content.strip():
-        try:
-            from services.rag_service import rag_pipeline
-            matched_chunks = rag_pipeline.index_and_retrieve(
-                document_text=document_content,
-                query=question,
-                top_k=5,
-            )
-            # Filter chunks with score > 0 or top chunks
-            valid_chunks = [ch for ch in matched_chunks if ch.get("score", 0) > 0]
-            if not valid_chunks and matched_chunks:
-                valid_chunks = matched_chunks[:3]
+    if not document_content or not document_content.strip():
+        return (
+            "I could not find document content to analyze. "
+            "Please ensure a document has been uploaded."
+        )
 
-            if valid_chunks:
-                response_lines = [
-                    f"Based on your document, here are the complete clauses regarding **\"{question}\"**:\n"
-                ]
-                for ch in valid_chunks:
-                    text = ch.get("text", "").strip()
-                    if text:
-                        response_lines.append(f"• {text}\n")
+    q_lower = question.lower()
 
-                return "\n".join(response_lines).strip()
-        except Exception as e:
-            print(f"[NyayBot] RAG chat fallback error: {e}")
+    # Detect common legal intent
+    is_late_rent_query = any(k in q_lower for k in ["late", "delay", "due date", "fail to pay", "pay rent late", "not paid", "after 7th", "grace period"])
+    is_deposit_query = any(k in q_lower for k in ["security deposit", "deposit refund", "deposit returned", "refund of deposit", "deduction"])
+    is_notice_query = any(k in q_lower for k in ["notice period", "terminate", "evict", "leave", "vacate", "quit", "lock-in"])
+
+    try:
+        from services.rag_service import rag_pipeline
+        matched_chunks = rag_pipeline.index_and_retrieve(
+            document_text=document_content,
+            query=question,
+            top_k=5,
+        )
+
+        # Filter out generic recital/preamble chunks (e.g. WHEREAS) unless the question specifically asks for parties/property
+        clean_chunks = []
+        for ch in matched_chunks:
+            txt = ch.get("text", "").strip()
+            if txt.startswith("WHEREAS") and not any(p in q_lower for p in ["who is", "parties", "owner", "landlord", "address", "demised", "premises"]):
+                continue
+            if ch.get("score", 0) > 0 and txt:
+                clean_chunks.append(ch)
+
+        # Smart handling for late rent / delay questions
+        if is_late_rent_query:
+            has_explicit_penalty = any(term in document_content.lower() for term in ["late fee", "penalty", "interest of", "delayed payment", "per day", "grace period"])
+            lines = [
+                f"Based on the analysis of your document regarding **\"{question}\"**:\n"
+            ]
+            if not has_explicit_penalty:
+                lines.append("• **No Late Fee Specified**: This agreement does **not** specify any explicit financial penalty, fine, or interest charges for paying rent late.")
+            
+            # Extract rent due date clause
+            rent_matches = [ch.get("text", "").strip() for ch in matched_chunks if any(w in ch.get("text", "").lower() for w in ["monthly rent", "7th day", "due date", "on or before", "without fail"])]
+            if rent_matches:
+                lines.append(f"• **Due Date Obligation**: The document states:\n  > \"{rent_matches[0]}\"")
+            
+            lines.append("• **Possible Consequences**: If rent is repeatedly unpaid, the landlord may treat it as a breach of agreement and initiate tenancy termination as per the notice period clause.")
+            lines.append("\n*(Note: Running in offline fallback mode. Add a free `GROQ_API_KEY` to backend/.env to enable full AI conversational reasoning.)*")
+            return "\n".join(lines).strip()
+
+        # If clean matching chunks exist
+        if clean_chunks:
+            response_lines = [
+                f"Based on your document, here are the relevant clauses regarding **\"{question}\"**:\n"
+            ]
+            for ch in clean_chunks[:3]:
+                text = ch.get("text", "").strip()
+                if text:
+                    response_lines.append(f"• {text}\n")
+            response_lines.append("\n*(Note: Add a free `GROQ_API_KEY` to backend/.env for conversational AI reasoning.)*")
+            return "\n".join(response_lines).strip()
+
+        # No match found - state clearly instead of dumping random text
+        return (
+            f"The uploaded document does not appear to contain a specific clause directly addressing **\"{question}\"**.\n\n"
+            "Please check if this matter is governed by statutory law or discuss it directly with the other party.\n\n"
+            "*(Tip: Configure `GROQ_API_KEY` in backend/.env to enable advanced AI comprehension.)*"
+        )
+
+    except Exception as e:
+        print(f"[NyayBot] RAG chat fallback error: {e}")
 
     return (
         "I'm sorry, the AI service is currently unavailable. "
         "Please review the simplified document above for your answer, "
-        "or try again in a moment. For specific legal questions, "
-        "we recommend consulting a qualified lawyer."
+        "or configure your `GROQ_API_KEY` in backend/.env for full AI capabilities."
     )
