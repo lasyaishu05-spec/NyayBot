@@ -11,9 +11,10 @@ _groq_available = False
 
 def _init_groq():
     """Try to initialize Groq client. Returns True if successful."""
-    global _groq_client, _groq_available
+    global _groq_client, _groq_available, _cached_groq_model
 
-    api_key = os.getenv("GROQ_API_KEY", "")
+    load_dotenv(override=True)
+    api_key = os.getenv("GROQ_API_KEY", "").strip().strip('"').strip("'")
 
     if not api_key or api_key == "your_groq_api_key_here":
         print("[NyayBot] No valid GROQ_API_KEY found. AI simplification will be skipped.")
@@ -24,6 +25,7 @@ def _init_groq():
         from groq import Groq
         _groq_client = Groq(api_key=api_key)
         _groq_available = True
+        _cached_groq_model = None
         print("[NyayBot] Groq AI client initialized successfully.")
         return True
     except Exception as e:
@@ -34,6 +36,43 @@ def _init_groq():
 
 # Try to initialize on import
 _init_groq()
+
+_PREFERRED_MODELS = [
+    "openai/gpt-oss-20b",
+    "qwen/qwen3.8-27b",
+    "openai/gpt-oss-120b",
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+]
+_cached_groq_model = None
+
+
+def _get_groq_model():
+    """Dynamically determine the best active chat model available for this API key."""
+    global _cached_groq_model, _groq_client
+    if _cached_groq_model:
+        return _cached_groq_model
+
+    if _groq_client:
+        try:
+            available = [
+                m.id for m in _groq_client.models.list().data
+                if not any(ex in m.id for ex in ['whisper', 'guard', 'orpheus'])
+            ]
+            for pref in _PREFERRED_MODELS:
+                if pref in available:
+                    _cached_groq_model = pref
+                    print(f"[NyayBot] Active Groq model: {_cached_groq_model}")
+                    return pref
+            if available:
+                _cached_groq_model = available[0]
+                print(f"[NyayBot] Fallback Groq model: {_cached_groq_model}")
+                return available[0]
+        except Exception as e:
+            print(f"[NyayBot] Groq model list lookup error: {e}")
+
+    _cached_groq_model = "openai/gpt-oss-20b"
+    return _cached_groq_model
 
 
 # ─── HELPER ──────────────────────────────────────────────────────────────────
@@ -47,8 +86,9 @@ def _groq_call(system_prompt, user_prompt, temperature=0.3, max_tokens=1024):
             return None
 
     try:
+        model = _get_groq_model()
         response = _groq_client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -703,8 +743,9 @@ def chat_with_document(question, document_content, history=None):
     messages.append({"role": "user", "content": question})
 
     try:
+        model = _get_groq_model()
         response = _groq_client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model=model,
             messages=messages,
             temperature=0.2,
             max_tokens=2048,
